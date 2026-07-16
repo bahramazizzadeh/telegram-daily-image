@@ -1,95 +1,105 @@
 import os
+import random
+import logging
+from datetime import datetime
+
 import requests
-import jdatetime
-import arabic_reshaper
 
-from bidi.algorithm import get_display
-from PIL import Image
-from PIL import ImageDraw
-from PIL import ImageFont
-
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-CHAT_ID = os.getenv("CHAT_ID")
-MODE = os.getenv("MODE")
-
-FONT = "fonts/Vazirmatn-Bold.ttf"
-
-MORNING = "morning.png"
-EVENING = "evening.png"
-
-OUTPUT = "output.png"
+from config import (
+    TELEGRAM_BOT_TOKEN,
+    TELEGRAM_CHAT_ID,
+    PHOTO_FOLDER
+)
 
 
-def fa(text):
-    en = "0123456789"
-    fa = "۰۱۲۳۴۵۶۷۸۹"
-
-    for e, f in zip(en, fa):
-        text = text.replace(e, f)
-
-    return text
+# تنظیمات لاگ
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s"
+)
 
 
-def rtl(text):
-    return get_display(
-        arabic_reshaper.reshape(text)
+def get_random_photo():
+    """
+    انتخاب یک عکس از پوشه photos
+    """
+
+    extensions = (
+        ".jpg",
+        ".jpeg",
+        ".png",
+        ".webp"
     )
 
+    photos = [
+        file for file in os.listdir(PHOTO_FOLDER)
+        if file.lower().endswith(extensions)
+    ]
 
-def make_image():
+    if not photos:
+        raise Exception("No photos found!")
 
-    img = Image.open(MORNING)
+    return random.choice(photos)
 
-    draw = ImageDraw.Draw(img)
 
-    font = ImageFont.truetype(FONT,72)
+def send_photo_to_telegram(photo_path):
+    """
+    ارسال عکس به تلگرام
+    """
 
-    d = jdatetime.date.today()
-
-    txt = fa(f"{d.year}/{d.month:02}/{d.day:02}")
-
-    txt = rtl(txt)
-
-    draw.text(
-        (1450,45),
-        txt,
-        font=font,
-        fill="white"
+    url = (
+        f"https://api.telegram.org/"
+        f"bot{TELEGRAM_BOT_TOKEN}/sendPhoto"
     )
 
-    img.save(OUTPUT)
-def send_photo(photo_path):
-
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto"
+    caption = (
+        f"📸 Daily Photo\n"
+        f"🕒 {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+    )
 
     with open(photo_path, "rb") as photo:
 
         response = requests.post(
             url,
             data={
-                "chat_id": CHAT_ID
+                "chat_id": TELEGRAM_CHAT_ID,
+                "caption": caption
             },
             files={
                 "photo": photo
             },
-            timeout=60
+            timeout=30
         )
 
-    print(response.text)
+    if response.status_code != 200:
+        raise Exception(
+            f"Telegram error: {response.text}"
+        )
 
-    response.raise_for_status()
+    logging.info(
+        "Photo sent successfully!"
+    )
 
 
-if MODE == "morning":
+def main():
 
-    make_image()
+    logging.info(
+        "Starting daily telegram photo sender..."
+    )
 
-    send_photo(OUTPUT)
+    photo_name = get_random_photo()
 
-elif MODE == "evening":
+    photo_path = os.path.join(
+        PHOTO_FOLDER,
+        photo_name
+    )
 
-    send_photo(EVENING)
+    logging.info(
+        f"Selected photo: {photo_path}"
+    )
 
-else:
+    send_photo_to_telegram(photo_path)
 
-    raise Exception("MODE is invalid")
+
+if __name__ == "__main__":
+    main()
